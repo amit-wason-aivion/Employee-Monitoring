@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import {
     Bar,
@@ -10,6 +10,8 @@ import {
     Tooltip,
     XAxis,
     YAxis,
+    AreaChart,
+    Area,
 } from "recharts";
 const API_BASE = import.meta.env.VITE_API_URL;
 const API_URL = `${API_BASE}/activities`;
@@ -364,55 +366,253 @@ function Sparkline({ data }) {
         </svg>
     );
 }
-function SummaryCard({ label, value, delta, deltaPositive, sparkline }) {
+function KpiIcon({ type }) {
+    const common = "h-5 w-5 text-slate-300";
+    if (type === "users") {
+        return (
+            <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M16 20c0-2.2-2-4-4-4s-4 1.8-4 4" />
+                <circle cx="12" cy="8" r="3" />
+            </svg>
+        );
+    }
+    if (type === "bolt") {
+        return (
+            <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M13 2L5 14h6l-1 8 8-12h-6l1-8z" />
+            </svg>
+        );
+    }
+    if (type === "clock") {
+        return (
+            <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+            </svg>
+        );
+    }
+    if (type === "target") {
+        return (
+            <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="12" cy="12" r="8" />
+                <circle cx="12" cy="12" r="3" />
+            </svg>
+        );
+    }
+    return null;
+}
+function KpiCard({ title, value, trend, trendType = "up", subtext, icon, color = "slate", data }) {
+    const trendClass = trendType === "down" ? "text-rose-600" : "text-emerald-600";
+    const accentMap = {
+        green: "bg-emerald-500",
+        blue: "bg-indigo-500",
+        red: "bg-rose-500",
+        gray: "bg-slate-400",
+        slate: "bg-slate-300",
+    };
+    const accent = accentMap[color] || accentMap.slate;
     return (
-        <div className="rounded-2xl bg-white p-5 shadow-card">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                {label}
-            </div>
-            <div className="mt-3 text-2xl font-semibold text-slate-900">
-                {value}
-            </div>
-            {sparkline && (
-                <div className="mt-3">
-                    <Sparkline data={sparkline} />
+        <div className="group rounded-2xl bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+            <div className="flex items-start gap-4">
+                <div className={`h-full w-1 self-stretch rounded-full ${accent}`} />
+                <div className="flex-1">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                {title}
+                            </div>
+                            <div className="mt-2 text-3xl font-semibold text-slate-900">
+                                {value}
+                            </div>
+                        </div>
+                        <div className="text-lg text-slate-300">{icon}</div>
+                    </div>
+                    {trend && (
+                        <div className={`mt-2 text-sm font-semibold ${trendClass}`}>
+                            {trendType === "down" ? "Down" : "Up"} {trend}
+                        </div>
+                    )}
+                    {subtext && (
+                        <div className="mt-1 text-xs text-slate-500">{subtext}</div>
+                    )}
+                    {data && (
+                        <div className="mt-3">
+                            <Sparkline data={data} />
+                        </div>
+                    )}
                 </div>
-            )}
-            {delta !== null && (
-                <div
-                    className={`mt-2 text-sm font-medium ${
-                        deltaPositive ? "text-emerald-600" : "text-rose-600"
-                    }`}
-                >
-                    {deltaPositive ? "Up" : "Down"} {delta}
+            </div>
+        </div>
+    );
+}
+function InsightBanner({ text, tone = "neutral" }) {
+    const tones = {
+        positive: "bg-emerald-50 text-emerald-700",
+        warning: "bg-amber-50 text-amber-700",
+        negative: "bg-rose-50 text-rose-700",
+        neutral: "bg-slate-100 text-slate-600",
+    };
+    return (
+        <div className={`rounded-2xl px-4 py-3 text-sm font-medium ${tones[tone] || tones.neutral}`}>
+            {text}
+        </div>
+    );
+}
+function AnalyticsCharts({ productivitySeries, appBars }) {
+    return (
+        <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+                <div className="mb-4 text-sm font-semibold text-slate-700">Productivity Over Time</div>
+                <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={productivitySeries}>
+                            <defs>
+                                <linearGradient id="prodFill" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.3" />
+                                    <stop offset="100%" stopColor="#4f46e5" stopOpacity="0" />
+                                </linearGradient>
+                            </defs>
+                            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
+                            <Tooltip formatter={(value) => `${value}%`} />
+                            <Area type="monotone" dataKey="value" stroke="#4f46e5" fill="url(#prodFill)" strokeWidth={2} />
+                        </AreaChart>
+                    </ResponsiveContainer>
                 </div>
-            )}
+            </div>
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+                <div className="mb-4 text-sm font-semibold text-slate-700">Time Spent by App</div>
+                <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={appBars}>
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} />
+                            <Tooltip formatter={(value) => `${value} min`} />
+                            <Bar dataKey="time" fill="#2563eb" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        </div>
+    );
+}
+function AppDistribution({ categories, topAppLabel }) {
+    const total = categories.productive + categories.neutral + categories.unproductive || 1;
+    const segments = [
+        { label: "Productive", value: categories.productive, color: "#22c55e" },
+        { label: "Neutral", value: categories.neutral, color: "#f59e0b" },
+        { label: "Unproductive", value: categories.unproductive, color: "#ef4444" },
+    ];
+    return (
+        <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="mb-4 text-sm font-semibold text-slate-700">App Distribution</div>
+            <div className="flex flex-wrap items-center gap-6">
+                <div className="relative h-40 w-40">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                            <Pie
+                                data={segments}
+                                dataKey="value"
+                                nameKey="label"
+                                outerRadius={70}
+                                innerRadius={45}
+                                paddingAngle={2}
+                            >
+                                {segments.map((entry) => (
+                                    <Cell key={entry.label} fill={entry.color} />
+                                ))}
+                            </Pie>
+                            <Tooltip formatter={(value) => `${Math.round((value / total) * 100)}%`} />
+                        </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                        <div className="text-xs font-semibold uppercase text-slate-400">App Usage</div>
+                        <div className="text-sm font-semibold text-slate-700">{topAppLabel}</div>
+                    </div>
+                </div>
+                <div className="space-y-2 text-sm">
+                    {segments.map((segment) => (
+                        <div key={segment.label} className="flex items-center gap-2 text-slate-600">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: segment.color }} />
+                            <span className="w-24">{segment.label}</span>
+                            <span className="text-slate-500">{Math.round((segment.value / total) * 100)}%</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+function Heatmap({ data }) {
+    return (
+        <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="mb-4 text-sm font-semibold text-slate-700">Activity Heatmap</div>
+            <div className="grid gap-2">
+                <div className="grid grid-cols-[80px,1fr] gap-2 text-xs text-slate-500">
+                    <div />
+                    <div className="grid grid-cols-12 gap-1">
+                        {data.hours.map((hour) => (
+                            <span key={hour} className="text-center">{hour}</span>
+                        ))}
+                    </div>
+                </div>
+                {data.users.map((user) => (
+                    <div key={user} className="grid grid-cols-[80px,1fr] gap-2">
+                        <div className="truncate text-xs text-slate-500">{user}</div>
+                        <div className="grid grid-cols-12 gap-1">
+                            {data.hours.map((hour) => {
+                                const value = data.matrix[user]?.[hour] || 0;
+                                const intensity = Math.min(1, value / data.max || 1);
+                                const shade = `rgba(79, 70, 229, ${0.1 + intensity * 0.6})`;
+                                return (
+                                    <div key={`${user}-${hour}`} className="h-4 rounded-sm" style={{ backgroundColor: shade }} />
+                                );
+                            })}
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
 function SummaryBar({ stats, sparklines }) {
     return (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard label="Total Users" value={stats.totalUsers} delta={null} sparkline={sparklines?.users} />
-            <SummaryCard
-                label="Average Productivity"
+            <KpiCard
+                title="Total Users"
+                value={stats.totalUsers}
+                trend={null}
+                icon={<KpiIcon type="users" />}
+                color="gray"
+                data={sparklines?.users}
+            />
+            <KpiCard
+                title="Average Productivity"
                 value={`${stats.avgProductivity}%`}
-                sparkline={sparklines?.productivity}
-                delta={null}
+                trend={null}
+                icon={<KpiIcon type="bolt" />}
+                color="green"
+                data={sparklines?.productivity}
             />
-            <SummaryCard
-                label="Total Active Time"
+            <KpiCard
+                title="Total Active Time"
                 value={formatDuration(stats.totalActiveSeconds)}
-                sparkline={sparklines?.active}
-                delta={stats.deltaTotalLabel}
-                deltaPositive={stats.deltaTotalSeconds >= 0}
+                trend={stats.deltaTotalLabel}
+                trendType={stats.deltaTotalSeconds >= 0 ? "up" : "down"}
+                subtext="vs yesterday"
+                icon={<KpiIcon type="clock" />}
+                color="blue"
+                data={sparklines?.active}
             />
-            <SummaryCard
-                label="Productive Time"
+            <KpiCard
+                title="Productive Time"
                 value={formatDuration(stats.totalProductiveSeconds)}
-                sparkline={sparklines?.productive}
-                delta={stats.deltaProductiveLabel}
-                deltaPositive={stats.deltaProductiveSeconds >= 0}
+                trend={stats.deltaProductiveLabel}
+                trendType={stats.deltaProductiveSeconds >= 0 ? "up" : "down"}
+                subtext="vs yesterday"
+                icon={<KpiIcon type="bolt" />}
+                color="green"
+                data={sparklines?.productive}
             />
         </div>
     );
@@ -423,10 +623,42 @@ function TeamInsights({ insights }) {
     }
     return (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard label="Most Productive" value={insights.mostProductive || "-"} delta={null} />
-            <SummaryCard label="Least Productive" value={insights.leastProductive || "-"} delta={null} />
-            <SummaryCard label="Top Focus Session" value={insights.topFocusSession || "-"} delta={null} />
-            <SummaryCard label="Highest Idle" value={insights.highestIdle || "-"} delta={null} />
+            <KpiCard
+                title="Most Productive"
+                value={insights.mostProductive?.name || "-"}
+                trend={insights.mostProductive?.meta || null}
+                trendType="up"
+                icon={<KpiIcon type="bolt" />}
+                color="green"
+                data={null}
+            />
+            <KpiCard
+                title="Least Productive"
+                value={insights.leastProductive?.name || "-"}
+                trend={insights.leastProductive?.meta || null}
+                trendType="down"
+                icon={<KpiIcon type="bolt" />}
+                color="red"
+                data={null}
+            />
+            <KpiCard
+                title="Top Focus Session"
+                value={insights.topFocusSession?.name || "-"}
+                trend={insights.topFocusSession?.meta || null}
+                trendType="up"
+                icon={<KpiIcon type="target" />}
+                color="blue"
+                data={null}
+            />
+            <KpiCard
+                title="Highest Idle"
+                value={insights.highestIdle?.name || "-"}
+                trend={insights.highestIdle?.meta || null}
+                trendType="down"
+                icon={<KpiIcon type="clock" />}
+                color="red"
+                data={null}
+            />
         </div>
     );
 }
@@ -443,6 +675,23 @@ function Badge({ tone, children }) {
             className={`rounded-full px-3 py-1 text-xs font-semibold ${tones[tone]}`}
         >
             {children}
+        </span>
+    );
+}
+function Card({ children, className = "" }) {
+    return (
+        <div
+            className={`rounded-2xl bg-white p-5 shadow-sm transition-shadow hover:shadow-md ${className}`}
+        >
+            {children}
+        </div>
+    );
+}
+function MetricPill({ colorClass, label }) {
+    return (
+        <span className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-600">
+            <span className={`h-2 w-2 rounded-full ${colorClass}`} />
+            <span>{label}</span>
         </span>
     );
 }
@@ -531,7 +780,14 @@ function UserCard({ user, comparison, collapsed, onToggle }) {
         setAliasName(user.alias_name || "");
         setAliasDraft(user.alias_name || "");
     }, [user.alias_name]);
-    const displayHost = aliasName ? `${aliasName} (${user.hostname || "Unknown"})` : (user.hostname || "Unknown");
+    const displayPrimary = aliasName || user.hostname || "Unknown device";
+    const displaySecondary = user.hostname || "Unknown";
+    const [tab, setTab] = useState("apps");
+    const topApps = user.appUsage.slice(0, 3);
+    const remainingApps = Math.max(0, user.appUsage.length - topApps.length);
+    const totalAppSeconds = user.appUsage.reduce((sum, app) => sum + app.seconds, 0) || 1;
+    const lastSession = user.sessions[0];
+    const productivityTitle = `Productive ${user.categoryPercent.productive}% | Neutral ${user.categoryPercent.neutral}% | Unproductive ${user.categoryPercent.unproductive}%`;
     const saveAlias = async () => {
         const trimmed = aliasDraft.trim();
         try {
@@ -548,19 +804,26 @@ function UserCard({ user, comparison, collapsed, onToggle }) {
         setAliasDraft(aliasName);
         setIsRenaming(false);
     };
-    const [tab, setTab] = useState("apps");
-    const topApps = user.appUsage.slice(0, 3);
-    const remainingApps = Math.max(0, user.appUsage.length - topApps.length);
-    const totalAppSeconds = user.appUsage.reduce((sum, app) => sum + app.seconds, 0) || 1;
-    const lastSession = user.sessions[0];
     return (
-        <div className="rounded-2xl bg-white p-5 shadow-card transition hover:shadow-lg">
-            <div className="flex items-center justify-between">
+        <Card>
+            <div className="flex items-start justify-between gap-4">
                 <div>
                     <div className="text-sm font-semibold text-slate-900">
-                        {user.username}
+                        {displayPrimary}
                     </div>
-                    {isRenaming ? (
+                    {!isRenaming && (
+                        <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                            <span>{displaySecondary}</span>
+                            <button
+                                type="button"
+                                onClick={() => setIsRenaming(true)}
+                                className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                                Rename
+                            </button>
+                        </div>
+                    )}
+                    {isRenaming && (
                         <div className="mt-2 flex items-center gap-2">
                             <input
                                 type="text"
@@ -584,106 +847,100 @@ function UserCard({ user, comparison, collapsed, onToggle }) {
                                 Cancel
                             </button>
                         </div>
-                    ) : (
-                        <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                            <span>{displayHost}</span>
-                            <button
-                                type="button"
-                                onClick={() => setIsRenaming(true)}
-                                className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-                            >
-                                Rename
-                            </button>
-                        </div>
                     )}
                 </div>
                 <div className="flex items-center gap-2">
                     <Badge tone={productivityLevel}>{statusLabel}</Badge>
-                    <button
-                        type="button"
-                        onClick={onToggle}
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                    >
-                        {collapsed ? "View Details" : "Hide Details"}
-                    </button>
                 </div>
             </div>
-            <div className="mt-4 flex items-end justify-between">
+
+            <div className="mt-5 flex items-end justify-between">
                 <div>
                     <div className="text-4xl font-semibold text-slate-900">
                         {user.productivityScore}
                     </div>
                     <div className="text-xs text-slate-500">{user.productivityLabel}</div>
                 </div>
-                <div className="text-xs text-slate-500">
-                    Focus {user.focusScore}%
-                </div>
+                <div className="text-xs text-slate-500">Focus {user.focusScore}%</div>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                <span className="rounded-full bg-slate-50 px-2 py-1 text-xs">Active {formatDuration(user.activeSeconds)}</span>
-                <span className="rounded-full bg-slate-50 px-2 py-1 text-xs">Idle {formatDuration(user.idleSeconds)}</span>
-                <span className="rounded-full bg-slate-50 px-2 py-1 text-xs">Deep Work {formatDuration(user.deepWorkSeconds)}</span>
-                <span className="rounded-full bg-slate-50 px-2 py-1 text-xs">Switches {user.switchCount}</span>
-                <span className="rounded-full bg-slate-50 px-2 py-1 text-xs">Breaks {user.idleInterruptions}</span>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+                <MetricPill colorClass="bg-emerald-500" label={`Active ${formatDuration(user.activeSeconds)}`} />
+                <MetricPill colorClass="bg-slate-400" label={`Idle ${formatDuration(user.idleSeconds)}`} />
+                <MetricPill colorClass="bg-emerald-600" label={`Deep ${formatDuration(user.deepWorkSeconds)}`} />
+                <MetricPill colorClass="bg-slate-600" label={`Switches ${user.switchCount}`} />
             </div>
-            <div className="mt-4">
-                <div className="text-xs font-semibold uppercase text-slate-400">Top Apps</div>
-                <div className="mt-2 space-y-1 text-sm text-slate-600">
-                    {topApps.length === 0 ? (
-                        <div className="text-slate-400">No app data yet.</div>
-                    ) : (
-                        topApps.map((app) => (
-                            <div key={app.name} className="flex items-center justify-between">
-                                <span className="text-slate-700">{app.name}</span>
-                                <span className="text-slate-500">
-                                    {Math.round((app.seconds / totalAppSeconds) * 100)}%
-                                </span>
-                            </div>
-                        ))
+
+            <div className="mt-5 grid gap-4">
+                <div>
+                    <div className="text-xs font-semibold uppercase text-slate-400">Top Apps</div>
+                    <div className="mt-2 space-y-1 text-sm text-slate-600">
+                        {topApps.length === 0 ? (
+                            <div className="text-slate-400">No app data yet.</div>
+                        ) : (
+                            topApps.map((app) => (
+                                <div key={app.name} className="flex items-center justify-between">
+                                    <span className="font-medium text-slate-700">{app.name}</span>
+                                    <span className="text-slate-500">
+                                        {Math.round((app.seconds / totalAppSeconds) * 100)}%
+                                    </span>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    {remainingApps > 0 && (
+                        <div className="mt-1 text-xs text-slate-400">+{remainingApps} more</div>
                     )}
                 </div>
-                {remainingApps > 0 && (
-                    <div className="mt-1 text-xs text-slate-400">+{remainingApps} more</div>
-                )}
+
+                <div>
+                    <div className="text-xs font-semibold uppercase text-slate-400">Last Session</div>
+                    {lastSession ? (
+                        <div className="mt-2 text-sm text-slate-600">
+                            <div>
+                                {formatDuration(lastSession.durationSeconds)}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                                {lastSession.apps.slice(0, 3).join(", ") || "-"}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="mt-2 text-xs text-slate-400">No sessions detected.</div>
+                    )}
+                </div>
             </div>
-            <div className="mt-4">
-                <div className="text-xs font-semibold uppercase text-slate-400">Last Session</div>
-                {lastSession ? (
-                    <div className="mt-2 text-sm text-slate-600">
-                        <div>
-                            {formatDuration(lastSession.durationSeconds)} / {formatTime(lastSession.start)} - {formatTime(lastSession.end)}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                            Apps: {lastSession.apps.slice(0, 3).join(", ") || "-"} / Switches {lastSession.switches}
-                        </div>
+
+            <div className="mt-5" title={productivityTitle}>
+                <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-2 bg-emerald-500" style={{ width: `${user.categoryPercent.productive}%` }} />
+                    <div className="h-2 bg-amber-400" style={{ width: `${user.categoryPercent.neutral}%` }} />
+                    <div className="h-2 bg-rose-500" style={{ width: `${user.categoryPercent.unproductive}%` }} />
+                </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between">
+                {user.alerts.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                        {user.alerts.map((alert) => (
+                            <Badge key={alert} tone="alert">{alert}</Badge>
+                        ))}
                     </div>
                 ) : (
-                    <div className="mt-2 text-xs text-slate-400">No sessions detected.</div>
+                    <span className="text-xs text-slate-400">No alerts</span>
                 )}
+                <button
+                    type="button"
+                    onClick={onToggle}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                    {collapsed ? "View Details" : "Hide Details"}
+                </button>
             </div>
-            {user.alerts.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                    {user.alerts.map((alert) => (
-                        <Badge key={alert} tone="alert">{alert}</Badge>
-                    ))}
-                </div>
-            )}
+
             {!collapsed && (
-                <div className="mt-4 space-y-4">
-                    <div>
-                        <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
-                            <span>Productivity Split</span>
-                            <span className="flex items-center gap-2">
-                                <span className="text-emerald-600">Productive {user.categoryPercent.productive}%</span>
-                                <span className="text-amber-600">Neutral {user.categoryPercent.neutral}%</span>
-                                <span className="text-rose-600">Unproductive {user.categoryPercent.unproductive}%</span>
-                            </span>
-                        </div>
-                        <SegmentedBar
-                            productive={user.categoryPercent.productive}
-                            neutral={user.categoryPercent.neutral}
-                            unproductive={user.categoryPercent.unproductive}
-                        />
+                <div className="mt-5 space-y-4 transition-all duration-200">
+                    <div className="text-xs text-slate-500">
+                        Focus {user.scoreBreakdown.focus}% / App Quality {user.scoreBreakdown.appQuality}% / Consistency {user.scoreBreakdown.consistency}% / Idle {user.scoreBreakdown.idle}%
                     </div>
                     <div className="flex items-center gap-2 rounded-full bg-slate-100 p-1 text-xs font-semibold">
                         <button
@@ -716,7 +973,7 @@ function UserCard({ user, comparison, collapsed, onToggle }) {
                                 <div className="text-slate-400">No sessions detected.</div>
                             ) : (
                                 user.sessions.map((session) => (
-                                    <div key={`${session.start}-${session.end}`} className="rounded-lg border border-slate-100 p-2">
+                                    <div key={`${session.start}-${session.end}`} className="rounded-lg bg-slate-50 p-3">
                                         <div className="text-xs text-slate-500">
                                             {formatTime(session.start)} - {formatTime(session.end)} / {formatDuration(session.durationSeconds)}
                                         </div>
@@ -731,7 +988,7 @@ function UserCard({ user, comparison, collapsed, onToggle }) {
                     )}
                 </div>
             )}
-        </div>
+        </Card>
     );
 }
 function LiveSection({ data }) {
@@ -792,6 +1049,7 @@ export default function Dashboard() {
     const [departmentFilter, setDepartmentFilter] = useState("All");
     const [roleFilter, setRoleFilter] = useState("All");
     const [locationFilter, setLocationFilter] = useState("All");
+    const [adminRange, setAdminRange] = useState("7d");
     const [adminStart, setAdminStart] = useState(() => {
         const end = new Date();
         const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
@@ -1119,97 +1377,6 @@ export default function Dashboard() {
         productive: weeklySeries.map((day) => day.productiveSeconds),
         productivity: weeklySeries.map((day) => day.avgProductivity),
     }), [weeklySeries]);
-    const adminActivities = useMemo(() => {
-        if (!adminStart || !adminEnd) {
-            return [];
-        }
-        const start = new Date(adminStart + "T00:00:00").getTime();
-        const end = new Date(adminEnd + "T23:59:59").getTime();
-        return activities.filter((item) => {
-            const ts = item.timestamp ? new Date(item.timestamp).getTime() : NaN;
-            if (Number.isNaN(ts) || ts < start || ts > end) {
-                return false;
-            }
-            if (departmentFilter !== "All" && item.department !== departmentFilter) {
-                return false;
-            }
-            if (roleFilter !== "All" && item.role !== roleFilter) {
-                return false;
-            }
-            if (locationFilter !== "All" && item.location !== locationFilter) {
-                return false;
-            }
-            return true;
-        });
-    }, [activities, adminStart, adminEnd, departmentFilter, roleFilter, locationFilter]);
-
-    const adminDailySeries = useMemo(() => {
-        if (!adminStart || !adminEnd) {
-            return [];
-        }
-        const startDate = new Date(adminStart + "T00:00:00");
-        const endDate = new Date(adminEnd + "T00:00:00");
-        const series = [];
-        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-            const dayStart = new Date(d);
-            const start = dayStart.getTime();
-            const end = start + 24 * 60 * 60 * 1000;
-            const dayItems = adminActivities.filter((item) => {
-                const ts = item.timestamp ? new Date(item.timestamp).getTime() : NaN;
-                return !Number.isNaN(ts) && ts >= start && ts < end;
-            });
-            const totalSeconds = dayItems.length * POLL_SECONDS;
-            const productiveSeconds = dayItems.filter((item) => getCategory(item.active_window || "") === "productive").length * POLL_SECONDS;
-            const idleSeconds = dayItems.filter((item) => isIdleItem(item)).length * POLL_SECONDS;
-            const avgProductivity = totalSeconds ? Math.round((productiveSeconds / totalSeconds) * 100) : 0;
-            series.push({
-                label: dayStart.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-                totalSeconds,
-                productiveSeconds,
-                idleSeconds,
-                avgProductivity,
-            });
-        }
-        return series;
-    }, [adminStart, adminEnd, adminActivities]);
-
-
-    const adminActiveIdleSeries = useMemo(() => (
-        adminDailySeries.map((day) => ({
-            label: day.label,
-            activeSeconds: Math.max(0, day.totalSeconds - day.idleSeconds),
-            idleSeconds: day.idleSeconds,
-        }))
-    ), [adminDailySeries]);
-
-    const adminCategoryDistribution = useMemo(() => {
-        const totals = { productive: 0, neutral: 0, unproductive: 0 };
-        for (const item of adminActivities) {
-            const category = getCategory(item.active_window || "");
-            totals[category] += POLL_SECONDS;
-        }
-        return [
-            { name: "Productive", value: totals.productive },
-            { name: "Neutral", value: totals.neutral },
-            { name: "Unproductive", value: totals.unproductive },
-        ];
-    }, [adminActivities]);
-
-    const adminHourly = useMemo(() => {
-        const buckets = Array.from({ length: 24 }, () => 0);
-        for (const item of adminActivities) {
-            const ts = item.timestamp ? new Date(item.timestamp) : null;
-            if (!ts || Number.isNaN(ts.getTime())) {
-                continue;
-            }
-            buckets[ts.getHours()] += 1;
-        }
-        return buckets.map((count, hour) => ({
-            hour: `${hour}:00`,
-            count,
-        }));
-    }, [adminActivities]);
-
     const dailyComparison = useMemo(() => {
         if (!selectedDate) {
             return {
@@ -1305,14 +1472,202 @@ export default function Dashboard() {
         const leastProductive = [...dailySummaryFiltered].sort((a, b) => a.productivityScore - b.productivityScore)[0];
         const topFocus = [...dailySummaryFiltered].sort((a, b) => b.maxSessionSeconds - a.maxSessionSeconds)[0];
         const highestIdle = [...dailySummaryFiltered].sort((a, b) => b.idleSeconds - a.idleSeconds)[0];
+        const displayName = (entry) => (
+            entry?.alias_name || entry?.username || entry?.hostname || "Unknown"
+        );
         return {
-            mostProductive: mostProductive ? `${mostProductive.username} (${mostProductive.productivityScore})` : "-",
-            leastProductive: leastProductive ? `${leastProductive.username} (${leastProductive.productivityScore})` : "-",
-            topFocusSession: topFocus ? formatDuration(topFocus.maxSessionSeconds) : "-",
-            highestIdle: highestIdle ? `${highestIdle.username} (${formatDuration(highestIdle.idleSeconds)})` : "-",
+            mostProductive: mostProductive ? {
+                name: displayName(mostProductive),
+                meta: `Score ${mostProductive.productivityScore}`,
+            } : null,
+            leastProductive: leastProductive ? {
+                name: displayName(leastProductive),
+                meta: `Score ${leastProductive.productivityScore}`,
+            } : null,
+            topFocusSession: topFocus ? {
+                name: displayName(topFocus),
+                meta: formatDuration(topFocus.maxSessionSeconds),
+            } : null,
+            highestIdle: highestIdle ? {
+                name: displayName(highestIdle),
+                meta: formatDuration(highestIdle.idleSeconds),
+            } : null,
         };
     }, [dailySummaryFiltered]);
-    const dailyStats = useMemo(() => {
+        const adminRangeBounds = useMemo(() => {
+        const now = new Date();
+        let start;
+        let end = now;
+        if (adminRange === "today") {
+            start = new Date(now.toISOString().slice(0, 10) + "T00:00:00");
+        } else if (adminRange === "7d") {
+            start = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+            start.setHours(0, 0, 0, 0);
+        } else if (adminRange === "30d") {
+            start = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
+            start.setHours(0, 0, 0, 0);
+        } else if (adminRange === "custom" && adminStart && adminEnd) {
+            start = new Date(adminStart + "T00:00:00");
+            end = new Date(adminEnd + "T23:59:59");
+        } else {
+            start = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+            start.setHours(0, 0, 0, 0);
+        }
+        return { start, end };
+    }, [adminRange, adminStart, adminEnd]);
+
+    const adminActivities = useMemo(() => {
+        const { start, end } = adminRangeBounds;
+        const startTs = start.getTime();
+        const endTs = end.getTime();
+        return activities.filter((item) => {
+            const ts = item.timestamp ? new Date(item.timestamp).getTime() : NaN;
+            if (Number.isNaN(ts) || ts < startTs || ts > endTs) {
+                return false;
+            }
+            if (departmentFilter !== "All" && item.department !== departmentFilter) {
+                return false;
+            }
+            if (roleFilter !== "All" && item.role !== roleFilter) {
+                return false;
+            }
+            if (locationFilter !== "All" && item.location !== locationFilter) {
+                return false;
+            }
+            return true;
+        });
+    }, [activities, adminRangeBounds, departmentFilter, roleFilter, locationFilter]);
+
+    const adminAnalytics = useMemo(() => {
+        const uniqueHosts = new Set();
+        const appSeconds = new Map();
+        const categorySeconds = { productive: 0, neutral: 0, unproductive: 0 };
+        let idleSeconds = 0;
+        for (const item of adminActivities) {
+            const hostname = item.hostname || "Unknown";
+            uniqueHosts.add(hostname);
+            const app = item.active_window || "Unknown";
+            appSeconds.set(app, (appSeconds.get(app) || 0) + POLL_SECONDS);
+            const category = getCategory(app);
+            categorySeconds[category] += POLL_SECONDS;
+            if (isIdleItem(item)) {
+                idleSeconds += POLL_SECONDS;
+            }
+        }
+        const totalSeconds = adminActivities.length * POLL_SECONDS;
+        const productiveSeconds = categorySeconds.productive;
+        const productivityPercent = totalSeconds ? Math.round((productiveSeconds / totalSeconds) * 100) : 0;
+        const topAppsByTime = Array.from(appSeconds.entries())
+            .map(([name, seconds]) => ({ name, seconds }))
+            .sort((a, b) => b.seconds - a.seconds)
+            .slice(0, 6);
+        const topApp = topAppsByTime[0];
+
+        const rangeMs = adminRangeBounds.end.getTime() - adminRangeBounds.start.getTime();
+        const prevStart = new Date(adminRangeBounds.start.getTime() - rangeMs);
+        const prevEnd = new Date(adminRangeBounds.start.getTime());
+        const prevItems = activities.filter((item) => {
+            const ts = item.timestamp ? new Date(item.timestamp).getTime() : NaN;
+            return !Number.isNaN(ts) && ts >= prevStart.getTime() && ts <= prevEnd.getTime();
+        });
+        let prevProductive = 0;
+        for (const item of prevItems) {
+            const category = getCategory(item.active_window || "");
+            if (category === "productive") {
+                prevProductive += POLL_SECONDS;
+            }
+        }
+        const prevTotal = prevItems.length * POLL_SECONDS;
+        const prevProductivity = prevTotal ? Math.round((prevProductive / prevTotal) * 100) : 0;
+        const productivityDelta = productivityPercent - prevProductivity;
+
+        return {
+            activeUsers: uniqueHosts.size,
+            devices: uniqueHosts.size,
+            totalSeconds,
+            productiveSeconds,
+            productivityPercent,
+            topApp,
+            topAppsByTime,
+            categorySeconds,
+            idleSeconds,
+            productivityDelta,
+        };
+    }, [adminActivities, adminRangeBounds, activities]);
+
+    const adminSeries = useMemo(() => {
+        const { start, end } = adminRangeBounds;
+        const rangeDays = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+        const buckets = [];
+        if (rangeDays <= 2) {
+            for (let h = 0; h < 24; h += 2) {
+                buckets.push({ label: `${h}:00`, items: [] });
+            }
+            for (const item of adminActivities) {
+                const ts = item.timestamp ? new Date(item.timestamp) : null;
+                if (!ts) continue;
+                const hour = ts.getHours();
+                const bucketIndex = Math.min(buckets.length - 1, Math.floor(hour / 2));
+                buckets[bucketIndex].items.push(item);
+            }
+        } else {
+            for (let i = 0; i < rangeDays; i += 1) {
+                const day = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+                buckets.push({ label: day.toLocaleDateString(undefined, { month: "short", day: "numeric" }), items: [] });
+            }
+            for (const item of adminActivities) {
+                const ts = item.timestamp ? new Date(item.timestamp) : null;
+                if (!ts) continue;
+                const dayIndex = Math.floor((ts.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+                if (dayIndex >= 0 && dayIndex < buckets.length) {
+                    buckets[dayIndex].items.push(item);
+                }
+            }
+        }
+        return buckets.map((bucket) => {
+            const total = bucket.items.length * POLL_SECONDS;
+            const productive = bucket.items.filter((item) => getCategory(item.active_window || "") === "productive").length * POLL_SECONDS;
+            const value = total ? Math.round((productive / total) * 100) : 0;
+            return { label: bucket.label, value };
+        });
+    }, [adminActivities, adminRangeBounds]);
+
+    const heatmapData = useMemo(() => {
+        const hourBuckets = Array.from({ length: 12 }, (_, idx) => idx * 2);
+        const counts = new Map();
+        const userTotals = new Map();
+        for (const item of adminActivities) {
+            const user = item.alias_name || item.username || item.hostname || "Unknown";
+            const ts = item.timestamp ? new Date(item.timestamp) : null;
+            if (!ts) continue;
+            const hour = ts.getHours();
+            const bucket = Math.floor(hour / 2) * 2;
+            if (!counts.has(user)) {
+                counts.set(user, {});
+            }
+            const map = counts.get(user);
+            map[bucket] = (map[bucket] || 0) + 1;
+            userTotals.set(user, (userTotals.get(user) || 0) + 1);
+        }
+        const topUsers = Array.from(userTotals.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 6)
+            .map(([user]) => user);
+        let max = 1;
+        const matrix = {};
+        for (const user of topUsers) {
+            const map = counts.get(user) || {};
+            matrix[user] = map;
+            for (const hour of hourBuckets) {
+                if ((map[hour] || 0) > max) {
+                    max = map[hour];
+                }
+            }
+        }
+        return { users: topUsers, hours: hourBuckets, matrix, max };
+    }, [adminActivities]);
+
+const dailyStats = useMemo(() => {
         const totalUsers = dailySummaryFiltered.length;
         const totalActiveSeconds = dailySummaryFiltered.reduce(
             (sum, user) => sum + user.activeSeconds,
@@ -1437,7 +1792,7 @@ export default function Dashboard() {
                         {error}
                     </div>
                 )}
-                {activeTab === "daily" ? (
+                {activeTab === "daily" && (
                     <div className="space-y-6">
                         <div className="flex flex-wrap items-center justify-between gap-4">
                             <div className="flex items-center gap-3">
@@ -1565,61 +1920,9 @@ export default function Dashboard() {
                             </div>
                         )}
                     </div>
-                ) : (
-                    <div className="space-y-6">
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            <SummaryCard label="Active Users" value={analytics.activeUsers} delta={null} />
-                            <SummaryCard label="Devices" value={analytics.activeUsers} delta={null} />
-                            <SummaryCard
-                                label="Top App"
-                                value={
-                                    analytics.topAppsByCount[0]
-                                        ? `${cleanAppName(analytics.topAppsByCount[0].name)} (${analytics.topAppsByCount[0].percent}%)`
-                                        : "-"
-                                }
-                                delta={null}
-                            />
-                        </div>
-                        <div className="grid gap-6 lg:grid-cols-2">
-                            <div className="rounded-2xl bg-white p-6 shadow-card">
-                                <div className="mb-4 text-sm font-semibold text-slate-700">App Usage</div>
-                                <div className="h-64">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie
-                                                data={chartData.pieData}
-                                                dataKey="value"
-                                                nameKey="name"
-                                                outerRadius={90}
-                                                innerRadius={40}
-                                                paddingAngle={3}
-                                            >
-                                                {chartData.pieData.map((entry, index) => (
-                                                    <Cell
-                                                        key={`cell-${entry.name}-${index}`}
-                                                        fill={chartColors[index % chartColors.length]}
-                                                    />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip formatter={(value) => `${value} min`} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
-                            <div className="rounded-2xl bg-white p-6 shadow-card">
-                                <div className="mb-4 text-sm font-semibold text-slate-700">Time Spent</div>
-                                <div className="h-64">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={chartData.barData}>
-                                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                                            <YAxis tick={{ fontSize: 11 }} />
-                                            <Tooltip formatter={(value) => `${value} min`} />
-                                            <Bar dataKey="time" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
-                        </div>
+)}
+{activeTab === "live" && (
+<div className="space-y-6">
                         <div className="flex flex-wrap items-center gap-4">
                             <label className="flex items-center gap-2 text-sm text-slate-600">
                                 Filter by host
@@ -1670,7 +1973,157 @@ export default function Dashboard() {
                         </div>
                         <LiveSection data={filteredActivities} />
                     </div>
-                )}
+)}
+{activeTab === "admin" && (
+                    <div className="space-y-6">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                            <div>
+                                <h2 className="text-xl font-semibold text-slate-900">Analytics</h2>
+                                <p className="text-sm text-slate-500">Team-level trends and usage insights</p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <select
+                                    value={adminRange}
+                                    onChange={(event) => setAdminRange(event.target.value)}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                >
+                                    <option value="today">Today</option>
+                                    <option value="7d">Last 7 days</option>
+                                    <option value="30d">Last 30 days</option>
+                                    <option value="custom">Custom</option>
+                                </select>
+                                {adminRange === "custom" && (
+                                    <>
+                                        <input
+                                            type="date"
+                                            value={adminStart}
+                                            onChange={(event) => setAdminStart(event.target.value)}
+                                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={adminEnd}
+                                            onChange={(event) => setAdminEnd(event.target.value)}
+                                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                        />
+                                    </>
+                                )}
+                                <select
+                                    value={departmentFilter}
+                                    onChange={(event) => setDepartmentFilter(event.target.value)}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                >
+                                    {departmentOptions.map((item) => (
+                                        <option key={item} value={item}>{item}</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={roleFilter}
+                                    onChange={(event) => setRoleFilter(event.target.value)}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                >
+                                    {roleOptions.map((item) => (
+                                        <option key={item} value={item}>{item}</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={locationFilter}
+                                    onChange={(event) => setLocationFilter(event.target.value)}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                >
+                                    {locationOptions.map((item) => (
+                                        <option key={item} value={item}>{item}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                            <KpiCard
+                                title="Active Users"
+                                value={adminAnalytics.activeUsers}
+                                trend={null}
+                                icon={<KpiIcon type="users" />}
+                                color="gray"
+                                data={null}
+                            />
+                            <KpiCard
+                                title="Devices"
+                                value={adminAnalytics.devices}
+                                trend={null}
+                                icon={<KpiIcon type="users" />}
+                                color="gray"
+                                data={null}
+                            />
+                            <KpiCard
+                                title="Productivity %"
+                                value={`${adminAnalytics.productivityPercent}%`}
+                                trend={`${adminAnalytics.productivityDelta}%`}
+                                trendType={adminAnalytics.productivityDelta >= 0 ? "up" : "down"}
+                                subtext="vs previous period"
+                                icon={<KpiIcon type="bolt" />}
+                                color="green"
+                                data={null}
+                            />
+                            <KpiCard
+                                title="Total Active Time"
+                                value={formatDuration(adminAnalytics.totalSeconds)}
+                                trend={null}
+                                icon={<KpiIcon type="clock" />}
+                                color="blue"
+                                data={null}
+                            />
+                            <KpiCard
+                                title="Productive Time"
+                                value={formatDuration(adminAnalytics.productiveSeconds)}
+                                trend={null}
+                                icon={<KpiIcon type="bolt" />}
+                                color="green"
+                                data={null}
+                            />
+                            <KpiCard
+                                title="Top App"
+                                value={adminAnalytics.topApp ? cleanAppName(adminAnalytics.topApp.name) : "-"}
+                                trend={adminAnalytics.topApp ? `${Math.round((adminAnalytics.topApp.seconds / (adminAnalytics.totalSeconds || 1)) * 100)}% share` : null}
+                                trendType="up"
+                                icon={<KpiIcon type="bolt" />}
+                                color="blue"
+                                data={null}
+                            />
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-3">
+                            <InsightBanner
+                                text={adminAnalytics.productivityDelta >= 0
+                                    ? `Productivity increased by ${adminAnalytics.productivityDelta}%`
+                                    : `Productivity decreased by ${Math.abs(adminAnalytics.productivityDelta)}%`}
+                                tone={adminAnalytics.productivityDelta >= 0 ? "positive" : "negative"}
+                            />
+                            <InsightBanner
+                                text={adminAnalytics.topApp
+                                    ? `${cleanAppName(adminAnalytics.topApp.name)} dominates usage`
+                                    : "No app usage data"}
+                                tone="neutral"
+                            />
+                            <InsightBanner
+                                text={adminAnalytics.idleSeconds > 0
+                                    ? `Idle time recorded across ${adminAnalytics.activeUsers} users`
+                                    : "No idle time detected"}
+                                tone={adminAnalytics.idleSeconds > 0 ? "warning" : "neutral"}
+                            />
+                        </div>
+                        <AnalyticsCharts
+                            productivitySeries={adminSeries}
+                            appBars={adminAnalytics.topAppsByTime.map((app) => ({
+                                name: cleanAppName(app.name),
+                                time: Math.round(app.seconds / 60),
+                            }))}
+                        />
+                        <AppDistribution
+                            categories={adminAnalytics.categorySeconds}
+                            topAppLabel={adminAnalytics.topApp ? `${cleanAppName(adminAnalytics.topApp.name)}` : "No data"}
+                        />
+                        <Heatmap data={heatmapData} />
+                    </div>
+)}
             </div>
         </div>
     );
