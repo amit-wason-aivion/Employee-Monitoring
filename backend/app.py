@@ -62,6 +62,12 @@ def ensure_database_exists():
             if not exists:
                 # Create DB with safe identifier handling (supports hyphens)
                 cur.execute(sql.SQL("CREATE DATABASE {}" ).format(sql.Identifier(DB_NAME)))
+                conn2 = psycopg2.connect(_build_db_url(DATABASE_URL, DB_NAME))
+                try:
+                    with conn2:
+                        create_activity_table(conn2)
+                finally:
+                    conn2.close()
     finally:
         conn.close()
 
@@ -82,6 +88,11 @@ def create_activity_table(conn):
                 username TEXT NOT NULL,
                 hostname TEXT NOT NULL,
                 active_window TEXT NOT NULL,
+                idle_seconds INTEGER,
+                is_idle BOOLEAN,
+                department TEXT,
+                role TEXT,
+                location TEXT,
                 payload JSONB NOT NULL,
                 signature TEXT,
                 timestamp_header TEXT,
@@ -89,7 +100,11 @@ def create_activity_table(conn):
             )
             """
         )
-
+        cur.execute("ALTER TABLE agent_activities ADD COLUMN IF NOT EXISTS idle_seconds INTEGER")
+        cur.execute("ALTER TABLE agent_activities ADD COLUMN IF NOT EXISTS is_idle BOOLEAN")
+        cur.execute("ALTER TABLE agent_activities ADD COLUMN IF NOT EXISTS department TEXT")
+        cur.execute("ALTER TABLE agent_activities ADD COLUMN IF NOT EXISTS role TEXT")
+        cur.execute("ALTER TABLE agent_activities ADD COLUMN IF NOT EXISTS location TEXT")
 
 
 def ensure_activity_table():
@@ -143,18 +158,28 @@ def store_activity_db(entry: dict, payload: dict):
                         username,
                         hostname,
                         active_window,
+                        idle_seconds,
+                        is_idle,
+                        department,
+                        role,
+                        location,
                         payload,
                         signature,
                         timestamp_header,
                         request_ip
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         entry["agent_id"],
                         entry["username"],
                         entry["hostname"],
                         entry["active_window"],
+                        entry.get("idle_seconds"),
+                        entry.get("is_idle"),
+                        entry.get("department"),
+                        entry.get("role"),
+                        entry.get("location"),
                         Json(payload),
                         request.headers.get("X-Signature"),
                         request.headers.get("X-Timestamp"),
@@ -178,7 +203,12 @@ def fetch_activities_db(limit: int = 200):
                     username,
                     hostname,
                     active_window,
-                    received_at
+                    received_at,
+                    idle_seconds,
+                    is_idle,
+                    department,
+                    role,
+                    location
                 FROM agent_activities
                 ORDER BY received_at DESC
                 LIMIT %s
@@ -193,6 +223,11 @@ def fetch_activities_db(limit: int = 200):
                     "hostname": row[2],
                     "active_window": row[3],
                     "timestamp": row[4].isoformat(),
+                    "idle_seconds": row[5],
+                    "is_idle": row[6],
+                    "department": row[7],
+                    "role": row[8],
+                    "location": row[9],
                 }
                 for row in rows
             ]

@@ -4,6 +4,8 @@ import hmac
 import json
 import os
 import shutil
+import ctypes
+from ctypes import wintypes
 import socket
 import subprocess
 import sys
@@ -36,6 +38,7 @@ DETACHED_FLAGS = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCE
 SERVER_URL = "http://192.168.1.22:5000/activity"
 POLL_INTERVAL = 5
 HEARTBEAT_INTERVAL = 60
+IDLE_THRESHOLD_SECONDS = 120
 API_KEY = ""
 SECRET_KEY = ""
 AGENT_ID = str(uuid.getnode())
@@ -72,6 +75,8 @@ def reload_config() -> None:
     SERVER_URL = os.getenv("SERVER_URL", "http://192.168.1.22:5000/activity")
     POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "5"))
     HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL", "60"))
+    global IDLE_THRESHOLD_SECONDS
+    IDLE_THRESHOLD_SECONDS = int(os.getenv("IDLE_THRESHOLD_SECONDS", "120"))
     API_KEY = os.getenv("API_KEY", "")
     SECRET_KEY = os.getenv("SECRET_KEY", "")
     AGENT_ID = os.getenv("AGENT_ID") or str(uuid.getnode())
@@ -201,6 +206,22 @@ def build_auth_headers(payload: Dict[str, str]) -> Dict[str, str]:
         headers["X-Timestamp"] = str(timestamp)
         headers["X-Signature"] = signature
     return headers
+
+
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
+
+
+def get_idle_seconds() -> int:
+    try:
+        lii = LASTINPUTINFO()
+        lii.cbSize = ctypes.sizeof(lii)
+        if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)) == 0:
+            return 0
+        millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
+        return int(millis / 1000)
+    except Exception:
+        return 0
 
 
 def get_active_window() -> str:
