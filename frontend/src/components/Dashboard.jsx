@@ -783,10 +783,9 @@ function UserCard({ user, comparison, collapsed, onToggle }) {
     const displayPrimary = aliasName || user.hostname || "Unknown device";
     const displaySecondary = user.hostname || "Unknown";
     const [tab, setTab] = useState("apps");
-    const topApps = user.appUsage.slice(0, 3);
+    const topApps = user.appUsage.slice(0, 2);
     const remainingApps = Math.max(0, user.appUsage.length - topApps.length);
     const totalAppSeconds = user.appUsage.reduce((sum, app) => sum + app.seconds, 0) || 1;
-    const lastSession = user.sessions[0];
     const productivityTitle = `Productive ${user.categoryPercent.productive}% | Neutral ${user.categoryPercent.neutral}% | Unproductive ${user.categoryPercent.unproductive}%`;
     const saveAlias = async () => {
         const trimmed = aliasDraft.trim();
@@ -854,80 +853,41 @@ function UserCard({ user, comparison, collapsed, onToggle }) {
                 </div>
             </div>
 
-            <div className="mt-5 flex items-end justify-between">
-                <div>
-                    <div className="text-4xl font-semibold text-slate-900">
-                        {user.productivityScore}
-                    </div>
-                    <div className="text-xs text-slate-500">{user.productivityLabel}</div>
+            <div className="mt-5">
+                <div className="text-4xl font-semibold text-slate-900">
+                    {user.productivityScore}
                 </div>
-                <div className="text-xs text-slate-500">Focus {user.focusScore}%</div>
+                <div className="text-xs text-slate-500">{user.productivityLabel}</div>
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
                 <MetricPill colorClass="bg-emerald-500" label={`Active ${formatDuration(user.activeSeconds)}`} />
                 <MetricPill colorClass="bg-slate-400" label={`Idle ${formatDuration(user.idleSeconds)}`} />
-                <MetricPill colorClass="bg-emerald-600" label={`Deep ${formatDuration(user.deepWorkSeconds)}`} />
                 <MetricPill colorClass="bg-slate-600" label={`Switches ${user.switchCount}`} />
             </div>
 
-            <div className="mt-5 grid gap-4">
-                <div>
-                    <div className="text-xs font-semibold uppercase text-slate-400">Top Apps</div>
-                    <div className="mt-2 space-y-1 text-sm text-slate-600">
-                        {topApps.length === 0 ? (
-                            <div className="text-slate-400">No app data yet.</div>
-                        ) : (
-                            topApps.map((app) => (
-                                <div key={app.name} className="flex items-center justify-between">
-                                    <span className="font-medium text-slate-700">{app.name}</span>
-                                    <span className="text-slate-500">
-                                        {Math.round((app.seconds / totalAppSeconds) * 100)}%
-                                    </span>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                    {remainingApps > 0 && (
-                        <div className="mt-1 text-xs text-slate-400">+{remainingApps} more</div>
-                    )}
-                </div>
-
-                <div>
-                    <div className="text-xs font-semibold uppercase text-slate-400">Last Session</div>
-                    {lastSession ? (
-                        <div className="mt-2 text-sm text-slate-600">
-                            <div>
-                                {formatDuration(lastSession.durationSeconds)}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                                {lastSession.apps.slice(0, 3).join(", ") || "-"}
-                            </div>
-                        </div>
+            <div className="mt-5">
+                <div className="text-xs font-semibold uppercase text-slate-400">Top Apps</div>
+                <div className="mt-2 space-y-1 text-sm text-slate-600">
+                    {topApps.length === 0 ? (
+                        <div className="text-slate-400">No app data yet.</div>
                     ) : (
-                        <div className="mt-2 text-xs text-slate-400">No sessions detected.</div>
+                        topApps.map((app) => (
+                            <div key={app.name} className="flex items-center justify-between">
+                                <span className="font-medium text-slate-700">{app.name}</span>
+                                <span className="text-slate-500">
+                                    {Math.round((app.seconds / totalAppSeconds) * 100)}%
+                                </span>
+                            </div>
+                        ))
                     )}
                 </div>
-            </div>
-
-            <div className="mt-5" title={productivityTitle}>
-                <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-2 bg-emerald-500" style={{ width: `${user.categoryPercent.productive}%` }} />
-                    <div className="h-2 bg-amber-400" style={{ width: `${user.categoryPercent.neutral}%` }} />
-                    <div className="h-2 bg-rose-500" style={{ width: `${user.categoryPercent.unproductive}%` }} />
-                </div>
+                {remainingApps > 0 && (
+                    <div className="mt-1 text-xs text-slate-400">+{remainingApps} more</div>
+                )}
             </div>
 
             <div className="mt-4 flex items-center justify-between">
-                {user.alerts.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                        {user.alerts.map((alert) => (
-                            <Badge key={alert} tone="alert">{alert}</Badge>
-                        ))}
-                    </div>
-                ) : (
-                    <span className="text-xs text-slate-400">No alerts</span>
-                )}
                 <button
                     type="button"
                     onClick={onToggle}
@@ -939,9 +899,29 @@ function UserCard({ user, comparison, collapsed, onToggle }) {
 
             {!collapsed && (
                 <div className="mt-5 space-y-4 transition-all duration-200">
+                    <div className="flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
+                        <span>Productivity Split</span>
+                        <span className="flex items-center gap-2">
+                            <span className="text-emerald-600">Productive {user.categoryPercent.productive}%</span>
+                            <span className="text-amber-600">Neutral {user.categoryPercent.neutral}%</span>
+                            <span className="text-rose-600">Unproductive {user.categoryPercent.unproductive}%</span>
+                        </span>
+                    </div>
+                    <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100" title={productivityTitle}>
+                        <div className="h-2 bg-emerald-500" style={{ width: `${user.categoryPercent.productive}%` }} />
+                        <div className="h-2 bg-amber-400" style={{ width: `${user.categoryPercent.neutral}%` }} />
+                        <div className="h-2 bg-rose-500" style={{ width: `${user.categoryPercent.unproductive}%` }} />
+                    </div>
                     <div className="text-xs text-slate-500">
                         Focus {user.scoreBreakdown.focus}% / App Quality {user.scoreBreakdown.appQuality}% / Consistency {user.scoreBreakdown.consistency}% / Idle {user.scoreBreakdown.idle}%
                     </div>
+                    {user.alerts.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {user.alerts.map((alert) => (
+                                <Badge key={alert} tone="alert">{alert}</Badge>
+                            ))}
+                        </div>
+                    )}
                     <div className="flex items-center gap-2 rounded-full bg-slate-100 p-1 text-xs font-semibold">
                         <button
                             type="button"
