@@ -11,7 +11,8 @@ import {
     XAxis,
     YAxis,
 } from "recharts";
-const API_URL = `${import.meta.env.VITE_API_URL}/activities`;
+const API_BASE = import.meta.env.VITE_API_URL;
+const API_URL = `${API_BASE}/activities`;
 const POLL_MS = 5000;
 const POLL_SECONDS = 5;
 const PRODUCTIVE_APPS = new Set([
@@ -523,6 +524,30 @@ function Timeline({ items }) {
 function UserCard({ user, comparison, collapsed, onToggle }) {
     const productivityLevel = user.productivityScore >= 80 ? "high" : user.productivityScore >= 50 ? "medium" : "low";
     const statusLabel = productivityLevel === "high" ? "High Performer" : productivityLevel === "medium" ? "Average" : "Needs Attention";
+    const [isRenaming, setIsRenaming] = useState(false);
+    const [aliasName, setAliasName] = useState(user.alias_name || "");
+    const [aliasDraft, setAliasDraft] = useState(user.alias_name || "");
+    useEffect(() => {
+        setAliasName(user.alias_name || "");
+        setAliasDraft(user.alias_name || "");
+    }, [user.alias_name]);
+    const displayHost = aliasName ? `${aliasName} (${user.hostname || "Unknown"})` : (user.hostname || "Unknown");
+    const saveAlias = async () => {
+        const trimmed = aliasDraft.trim();
+        try {
+            await axios.put(`${API_BASE}/device-aliases/${encodeURIComponent(user.hostname || "Unknown")}`, {
+                alias_name: trimmed,
+            });
+            setAliasName(trimmed);
+            setIsRenaming(false);
+        } catch (err) {
+            console.error("[dashboard] alias update failed:", err);
+        }
+    };
+    const cancelRename = () => {
+        setAliasDraft(aliasName);
+        setIsRenaming(false);
+    };
     const [tab, setTab] = useState("apps");
     const topApps = user.appUsage.slice(0, 3);
     const remainingApps = Math.max(0, user.appUsage.length - topApps.length);
@@ -535,7 +560,42 @@ function UserCard({ user, comparison, collapsed, onToggle }) {
                     <div className="text-sm font-semibold text-slate-900">
                         {user.username}
                     </div>
-                    <div className="text-xs text-slate-500">{user.hostname}</div>
+                    {isRenaming ? (
+                        <div className="mt-2 flex items-center gap-2">
+                            <input
+                                type="text"
+                                value={aliasDraft}
+                                onChange={(event) => setAliasDraft(event.target.value)}
+                                placeholder="Device name"
+                                className="w-48 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-slate-400 focus:outline-none"
+                            />
+                            <button
+                                type="button"
+                                onClick={saveAlias}
+                                className="rounded-md bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
+                            >
+                                Save
+                            </button>
+                            <button
+                                type="button"
+                                onClick={cancelRename}
+                                className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                            <span>{displayHost}</span>
+                            <button
+                                type="button"
+                                onClick={() => setIsRenaming(true)}
+                                className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                                Rename
+                            </button>
+                        </div>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <Badge tone={productivityLevel}>{statusLabel}</Badge>
@@ -699,7 +759,7 @@ function LiveSection({ data }) {
                             data.map((item) => (
                                 <tr key={`${item.username}-${item.hostname}-${item.timestamp}`}>
                                     <td className="px-4 py-3 text-slate-700">{item.username}</td>
-                                    <td className="px-4 py-3 text-slate-700">{item.hostname}</td>
+                                    <td className="px-4 py-3 text-slate-700">{item.alias_name ? `${item.alias_name} (${item.hostname})` : item.hostname}</td>
                                     <td className="px-4 py-3 text-slate-700">{item.active_window}</td>
                                     <td className="px-4 py-3 text-slate-500">
                                         {new Date(item.timestamp).toLocaleString()}
@@ -884,6 +944,7 @@ export default function Dashboard() {
         return Array.from(grouped.entries()).map(([hostname, items]) => {
             const latest = items[0];
             const username = latest?.username || "Unknown";
+            const alias_name = latest?.alias_name || "";
             const totalSeconds = items.length * POLL_SECONDS;
             const firstTime = items[0]?.timestamp ? new Date(items[0].timestamp).getTime() : Number.NaN;
             const lastTime = items[items.length - 1]?.timestamp ? new Date(items[items.length - 1].timestamp).getTime() : Number.NaN;
@@ -999,6 +1060,7 @@ export default function Dashboard() {
             return {
                 hostname,
                 username,
+                alias_name,
                 totalSeconds,
                 sessionSeconds,
                 activeSeconds,
@@ -1217,7 +1279,7 @@ export default function Dashboard() {
         let list = dailySummary;
         if (query) {
             list = list.filter((user) => {
-                const target = `${user.username} ${user.hostname}`.toLowerCase();
+                const target = `${user.username} ${user.hostname} ${user.alias_name || ""}`.toLowerCase();
                 return target.includes(query);
             });
         }

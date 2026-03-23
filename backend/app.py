@@ -106,6 +106,18 @@ def create_activity_table(conn):
         cur.execute("ALTER TABLE agent_activities ADD COLUMN IF NOT EXISTS role TEXT")
         cur.execute("ALTER TABLE agent_activities ADD COLUMN IF NOT EXISTS location TEXT")
 
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS device_aliases (
+                hostname TEXT PRIMARY KEY,
+                alias_name TEXT,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        cur.execute("ALTER TABLE device_aliases ADD COLUMN IF NOT EXISTS alias_name TEXT")
+        cur.execute("ALTER TABLE device_aliases ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ")
+
 
 def ensure_activity_table():
     conn = get_db_connection()
@@ -199,18 +211,20 @@ def fetch_activities_db(limit: int = 200):
             cur.execute(
                 """
                 SELECT
-                    agent_id,
-                    username,
-                    hostname,
-                    active_window,
-                    received_at,
-                    idle_seconds,
-                    is_idle,
-                    department,
-                    role,
-                    location
-                FROM agent_activities
-                ORDER BY received_at DESC
+                    a.agent_id,
+                    a.username,
+                    a.hostname,
+                    a.active_window,
+                    a.received_at,
+                    a.idle_seconds,
+                    a.is_idle,
+                    a.department,
+                    a.role,
+                    a.location,
+                    d.alias_name
+                FROM agent_activities a
+                LEFT JOIN device_aliases d ON d.hostname = a.hostname
+                ORDER BY a.received_at DESC
                 LIMIT %s
                 """,
                 (limit,),
@@ -228,9 +242,47 @@ def fetch_activities_db(limit: int = 200):
                     "department": row[7],
                     "role": row[8],
                     "location": row[9],
+                    "alias_name": row[10],
                 }
                 for row in rows
             ]
+    finally:
+        conn.close()
+
+
+def upsert_device_alias(hostname: str, alias_name: str):
+    if not DATABASE_URL:
+        return
+    conn = get_db_connection()
+    if conn is None:
+        return
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO device_aliases (hostname, alias_name, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (hostname)
+                    DO UPDATE SET alias_name = EXCLUDED.alias_name, updated_at = NOW()
+                    """
+                    ,
+                    (hostname, alias_name),
+                )
+    finally:
+        conn.close()
+
+
+def delete_device_alias(hostname: str):
+    if not DATABASE_URL:
+        return
+    conn = get_db_connection()
+    if conn is None:
+        return
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM device_aliases WHERE hostname = %s", (hostname,))
     finally:
         conn.close()
 
@@ -359,6 +411,24 @@ def post_activity():
     print("Received activity:", entry)
 
     return jsonify({"status": "ok"}), 200
+
+
+@app.put("/device-aliases/<path:hostname>")
+def update_device_alias(hostname):
+    data = request.get_json(silent=True) or {}
+    alias_name = (data.get("alias_name") or "").strip()
+    if len(alias_name) > 255:
+        return jsonify({"error": "alias_name too long"}), 400
+    if not DATABASE_URL:
+        return jsonify({"error": "Database not configured"}), 500
+
+    ensure_activity_table()
+    if alias_name:
+        upsert_device_alias(hostname, alias_name)
+        return jsonify({"hostname": hostname, "alias_name": alias_name})
+
+    delete_device_alias(hostname)
+    return jsonify({"hostname": hostname, "alias_name": None})
 
 
 @app.get("/activities")
