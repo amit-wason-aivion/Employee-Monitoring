@@ -1,14 +1,18 @@
-﻿from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import Json
+from psycopg2 import sql
 
 
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
@@ -19,10 +23,181 @@ CORS(app)
 API_KEY = os.getenv("API_KEY", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 MAX_CLOCK_SKEW_SECONDS = int(os.getenv("MAX_CLOCK_SKEW_SECONDS", "60"))
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+DB_NAME = os.getenv("DB_NAME", "employee-monitoring")
+DATABASE_ADMIN_URL = os.getenv("DATABASE_ADMIN_URL", "")
+DATA_RETENTION_DAYS = int(os.getenv("DATA_RETENTION_DAYS", "60"))
+PURGE_INTERVAL_SECONDS = int(os.getenv("PURGE_INTERVAL_SECONDS", "3600"))
 
 # In-memory store for activity logs.
 MAX_LOGS = 1000
 _activities = []
+_last_purge_at = 0.0
+
+
+
+def _build_db_url(base_url: str, db_name: str) -> str:
+    parsed = urlparse(base_url)
+    return urlunparse(parsed._replace(path=f"/{db_name}"))
+
+
+def ensure_database_exists():
+    if not DATABASE_URL or not DB_NAME:
+        return
+    # Try connecting to the target DB; if it works, we're done.
+    try:
+        conn = psycopg2.connect(_build_db_url(DATABASE_URL, DB_NAME))
+        conn.close()
+        return
+    except Exception:
+        pass
+
+    admin_url = DATABASE_ADMIN_URL or _build_db_url(DATABASE_URL, "postgres")
+    conn = psycopg2.connect(admin_url)
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (DB_NAME,))
+            exists = cur.fetchone()
+            if not exists:
+                # Create DB with safe identifier handling (supports hyphens)
+                cur.execute(sql.SQL("CREATE DATABASE {}" ).format(sql.Identifier(DB_NAME)))
+    finally:
+        conn.close()
+
+def get_db_connection():
+    if not DATABASE_URL:
+        return None
+    ensure_database_exists()
+    return psycopg2.connect(_build_db_url(DATABASE_URL, DB_NAME))
+
+def create_activity_table(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_activities (
+                id BIGSERIAL PRIMARY KEY,
+                received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                agent_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                hostname TEXT NOT NULL,
+                active_window TEXT NOT NULL,
+                payload JSONB NOT NULL,
+                signature TEXT,
+                timestamp_header TEXT,
+                request_ip TEXT
+            )
+            """
+        )
+
+
+
+def ensure_activity_table():
+    conn = get_db_connection()
+    if conn is None:
+        return
+    try:
+        with conn:
+            create_activity_table(conn)
+    finally:
+        conn.close()
+
+
+def maybe_purge_db():
+    if not DATABASE_URL or DATA_RETENTION_DAYS <= 0:
+        return
+    global _last_purge_at
+    now = time.time()
+    if PURGE_INTERVAL_SECONDS > 0 and (now - _last_purge_at) < PURGE_INTERVAL_SECONDS:
+        return
+    _last_purge_at = now
+    conn = get_db_connection()
+    if conn is None:
+        return
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM agent_activities
+                    WHERE received_at < NOW() - (%s * INTERVAL '1 day')
+                    """,
+                    (DATA_RETENTION_DAYS,),
+                )
+    finally:
+        conn.close()
+
+
+
+def store_activity_db(entry: dict, payload: dict):
+    conn = get_db_connection()
+    if conn is None:
+        return
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO agent_activities (
+                        agent_id,
+                        username,
+                        hostname,
+                        active_window,
+                        payload,
+                        signature,
+                        timestamp_header,
+                        request_ip
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        entry["agent_id"],
+                        entry["username"],
+                        entry["hostname"],
+                        entry["active_window"],
+                        Json(payload),
+                        request.headers.get("X-Signature"),
+                        request.headers.get("X-Timestamp"),
+                        request.headers.get("X-Forwarded-For") or request.remote_addr,
+                    ),
+                )
+    finally:
+        conn.close()
+
+
+def fetch_activities_db(limit: int = 200):
+    conn = get_db_connection()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    agent_id,
+                    username,
+                    hostname,
+                    active_window,
+                    received_at
+                FROM agent_activities
+                ORDER BY received_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+            return [
+                {
+                    "agent_id": row[0],
+                    "username": row[1],
+                    "hostname": row[2],
+                    "active_window": row[3],
+                    "timestamp": row[4].isoformat(),
+                }
+                for row in rows
+            ]
+    finally:
+        conn.close()
 
 
 def canonical_payload(payload: dict) -> str:
@@ -128,11 +303,23 @@ def post_activity():
         "username": username,
         "hostname": hostname,
         "active_window": active_window,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     _activities.append(entry)
     if len(_activities) > MAX_LOGS:
         _activities.pop(0)
+
+    if DATA_RETENTION_DAYS > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=DATA_RETENTION_DAYS)
+        _activities[:] = [item for item in _activities if datetime.fromisoformat(item["timestamp"].replace("Z", "+00:00")).astimezone(timezone.utc) >= cutoff]
+
+    if DATABASE_URL:
+        ensure_activity_table()
+        try:
+            maybe_purge_db()
+            store_activity_db(entry, data)
+        except Exception as exc:
+            print("DB ERROR: failed to store activity", {"error": str(exc)})
 
     print("Received activity:", entry)
 
@@ -141,6 +328,16 @@ def post_activity():
 
 @app.get("/activities")
 def get_activities():
+    if DATABASE_URL:
+        ensure_activity_table()
+        try:
+            maybe_purge_db()
+            records = fetch_activities_db()
+            if records is not None:
+                return jsonify(records)
+        except Exception as exc:
+            print("DB ERROR: failed to fetch activities", {"error": str(exc)})
+
     # Return newest first.
     return jsonify(list(reversed(_activities)))
 
